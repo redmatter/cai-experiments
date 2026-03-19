@@ -1,0 +1,26 @@
+node_modules/
+.DS_Store
+*.log
+
+# Test results
+tools/latency-tester/results/*.csv
+!tools/latency-tester/results/.gitkeep
+
+# Environment variables
+.env
+.env.local
+
+# Editor directories
+.vscode/
+.idea/
+
+# Build outputs
+dist/
+build/
+*.js
+*.d.ts
+!jest.config.js
+
+# Bun
+.bun/
+bun.lockb

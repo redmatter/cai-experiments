@@ -1,0 +1,64 @@
+[
+  {
+    "provider": "bedrock",
+    "model": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "region": "eu-west-1",
+    "optimisedLatency": false,
+    "withCache": false,
+    "temperature": 0.2,
+    "maxTokens": 1024,
+    "name": "MobileDE: Bedrock EU 4.5 Haiku (No Cache)",
+    "promptTemplate": "prompt-template-mobilede.json"
+  },
+  {
+    "provider": "bedrock",
+    "model": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "region": "eu-west-1",
+    "optimisedLatency": false,
+    "withCache": true,
+    "temperature": 0.2,
+    "maxTokens": 1024,
+    "name": "MobileDE: Bedrock EU 4.5 Haiku (With Cache)",
+    "promptTemplate": "prompt-template-mobilede.json"
+  },
+  {
+    "provider": "bedrock",
+    "model": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "region": "us-east-2",
+    "optimisedLatency": false,
+    "withCache": false,
+    "temperature": 0.2,
+    "maxTokens": 1024,
+    "name": "MobileDE: Bedrock US 4.5 Haiku (No Cache)",
+    "promptTemplate": "prompt-template-mobilede.json"
+  },
+  {
+    "provider": "bedrock",
+    "model": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "region": "us-east-2",
+    "optimisedLatency": false,
+    "withCache": true,
+    "temperature": 0.2,
+    "maxTokens": 1024,
+    "name": "MobileDE: Bedrock US 4.5 Haiku (With Cache)",
+    "promptTemplate": "prompt-template-mobilede.json"
+  },
+  {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5-20251001",
+    "withCache": false,
+    "temperature": 0.2,
+    "maxTokens": 1024,
+    "name": "MobileDE: Anthropic Direct 4.5 Haiku (No Cache)",
+    "promptTemplate": "prompt-template-mobilede.json"
+  },
+  {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5-20251001",
+    "withCache": true,
+    "temperature": 0.2,
+    "maxTokens": 1024,
+    "name": "MobileDE: Anthropic Direct 4.5 Haiku (With Cache)",
+    "promptTemplate": "prompt-template-mobilede.json"
+  }
+]
