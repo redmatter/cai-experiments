@@ -1,4 +1,4 @@
-// Semantic Stability Tester - Type Definitions
+// Speculative Handoff - Type Definitions
 
 export interface UtterancePair {
   id: string;

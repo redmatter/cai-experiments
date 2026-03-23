@@ -70,7 +70,7 @@ Key docs: [`docs/CURRENT-STATE.md`](tools/cai-filler-test-rig/docs/CURRENT-STATE
 
 ---
 
-### Semantic Stability Tester (`tools/semantic-stability-tester/`)
+### Speculative Handoff (`tools/semantic-stability-tester/`)
 
 Evaluates strategies for detecting whether an extended utterance has changed meaning compared to an earlier interim version. Powers the **speculative handoff pipeline** - starting LLM generation before the user finishes speaking, then verifying the meaning hasn't shifted.
 
@@ -105,7 +105,7 @@ ai-utils/
 └── tools/
     ├── latency-tester/              # API latency comparison
     ├── cai-filler-test-rig/         # Filler strategy testing
-    └── semantic-stability-tester/   # Speculative handoff pipeline
+    └── semantic-stability-tester/   # Speculative handoff
 ```
 
 ## Adding New Tools

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Semantic Stability Tester — Entry Point
+// Speculative Handoff — Stability Strategy Evaluator
 // Evaluates different strategies for detecting whether an extended
 // utterance has changed meaning compared to an earlier interim version.
 
@@ -161,7 +161,7 @@ function loadCorpus(languages: string[], source: CliArgs['corpusSource']): Utter
 }
 
 async function main(): Promise<void> {
-  console.log('Semantic Stability Tester\n');
+  console.log('Speculative Handoff — Stability Strategy Evaluator\n');
 
   const args = parseArgs();
   const corpus = loadCorpus(args.languages, args.corpusSource);
