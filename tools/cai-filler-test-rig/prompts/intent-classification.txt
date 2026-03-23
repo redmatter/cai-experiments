@@ -1,0 +1,5 @@
+Classify the following user utterance into exactly one of these intent categories. Output only the category name, nothing else.
+
+Categories: QUESTION, REQUEST, COMPLAINT, CLARIFICATION, GREETING, OTHER
+
+Utterance: {{USER_UTTERANCE}}

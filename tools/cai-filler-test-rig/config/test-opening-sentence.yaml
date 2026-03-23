@@ -1,0 +1,30 @@
+run_id: test_opening
+description: "Opening Sentence architecture test - compare against dynamic/intent baselines"
+aws_region: us-east-1
+reasoning_model: us.anthropic.claude-haiku-4-5-20251001-v1:0
+fast_model: global.amazon.nova-2-lite-v1:0
+reasoning_budget_tokens: 1024
+filler_strategy: all
+conversations_per_prompt: 2
+turns_per_conversation: 3
+tts_words_per_minute: 130
+bridge_filler_threshold_ms: 2200
+output_csv: tools/cai-filler-test-rig/results/test_opening.csv
+
+system_prompts:
+  - id: customer_support
+    text: |
+      You are a helpful customer support agent for Natterbox, a VoIP SaaS
+      platform. Answer questions about billing, technical issues, and account
+      management. Keep responses brief and helpful.
+
+  - id: technical_support
+    text: |
+      You are a technical support engineer for Natterbox. Help users debug
+      call quality issues, SIP configuration, and network problems. Be precise
+      and technical when needed.
+
+  - id: sales_enquiry
+    text: |
+      You are a friendly sales assistant for Natterbox. Answer questions about
+      pricing, features, and plans. Be helpful but concise.

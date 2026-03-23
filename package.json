@@ -5,12 +5,22 @@
   "scripts": {
     "latency-test": "bun run tools/latency-tester/index.ts",
     "latency-test:mobilede": "SCENARIO_FILE=scenario-mobilede.json bun run tools/latency-tester/index.ts",
+    "filler-test": "bun run tools/cai-filler-test-rig/index.ts",
+    "filler-test:example": "bun run tools/cai-filler-test-rig/index.ts --config tools/cai-filler-test-rig/config/example.yaml",
+    "stability-build-corpus": "bun run tools/semantic-stability-tester/src/corpus-builder.ts",
+    "stability-test": "bun run tools/semantic-stability-tester/index.ts",
+    "stability-test:heuristic": "bun run tools/semantic-stability-tester/index.ts --heuristic-only -v",
+    "fire-point-test": "bun run tools/semantic-stability-tester/fire-point-test.ts",
+    "fire-point-test:verbose": "bun run tools/semantic-stability-tester/fire-point-test.ts -v",
+    "fire-point-report": "bun run tools/semantic-stability-tester/fire-point-report.ts",
     "test": "bun test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
     "@aws-sdk/client-bedrock-runtime": "^3.701.0",
-    "@aws-sdk/credential-providers": "^3.701.0"
+    "@aws-sdk/credential-providers": "^3.701.0",
+    "@huggingface/transformers": "^3.4.1",
+    "yaml": "^2.3.4"
   },
   "devDependencies": {
     "@types/bun": "latest",

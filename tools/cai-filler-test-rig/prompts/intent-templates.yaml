@@ -1,0 +1,28 @@
+# Intent-based filler template bank
+# Each intent has a primary phrase (2-4 words) and a bridge phrase (1-2 words)
+# Primary: thinking sounds and transitions
+# Bridge: ONLY pure thinking sounds (no words, just stalling)
+
+QUESTION:
+  primary: "Hmm, ok..."
+  bridge: "Uh..."
+
+REQUEST:
+  primary: "Alright..."
+  bridge: "Mm..."
+
+COMPLAINT:
+  primary: "Right, hmm..."
+  bridge: "Ah..."
+
+CLARIFICATION:
+  primary: "Ah, so..."
+  bridge: "Hmm..."
+
+GREETING:
+  primary: "Hi..."
+  bridge: "Uh..."
+
+OTHER:
+  primary: "Ok..."
+  bridge: "Mm..."

@@ -1,0 +1,19 @@
+run_id: test_small
+description: "Small test run - validate end-to-end execution"
+aws_region: us-east-1
+reasoning_model: us.anthropic.claude-haiku-4-5-20251001-v1:0
+fast_model: global.amazon.nova-2-lite-v1:0
+reasoning_budget_tokens: 1024
+filler_strategy: both             # Test all three strategies
+conversations_per_prompt: 1       # Just 1 conversation
+turns_per_conversation: 4         # 4 turns to show variety
+tts_words_per_minute: 130
+bridge_filler_threshold_ms: 2200
+output_csv: tools/cai-filler-test-rig/results/test_small.csv
+
+system_prompts:
+  - id: customer_support
+    text: |
+      You are a helpful customer support agent for Natterbox, a VoIP SaaS
+      platform. Answer questions about billing, technical issues, and account
+      management. Keep responses brief and helpful.

@@ -1,0 +1,25 @@
+run_id: example_001
+description: "Example configuration - Strategy A vs B on customer support persona"
+aws_region: us-east-1
+reasoning_model: us.anthropic.claude-haiku-4-5-20251001-v1:0
+fast_model: global.amazon.nova-2-lite-v1:0
+reasoning_budget_tokens: 1024
+filler_strategy: both             # dynamic | intent_conditioned | both | none
+conversations_per_prompt: 3       # synthetic conversations per seed prompt
+turns_per_conversation: 4         # user turns per conversation
+tts_words_per_minute: 130         # used to estimate filler audio duration
+bridge_filler_threshold_ms: 2200  # trigger bridge filler after this many ms
+output_csv: tools/cai-filler-test-rig/results/example_001.csv
+
+system_prompts:
+  - id: customer_support
+    text: |
+      You are a helpful customer support agent for Natterbox, a VoIP SaaS
+      platform. Answer questions about billing, technical issues, and account
+      management.
+
+  - id: sales_assistant
+    text: |
+      You are a sales assistant helping prospects understand Natterbox's
+      enterprise telephony features. Be consultative and ask qualifying
+      questions.

@@ -1,0 +1,51 @@
+Generate TWO short phrases for a voice assistant responding to a user:
+
+PRIMARY (2-4 words): A natural thinking/acknowledgment sound
+BRIDGE (1-2 words): A pure continuation sound - NO WORDS, just thinking sounds
+
+PRIMARY can use:
+- Thinking sounds: "Umm...", "Uh...", "Hmm...", "Ah..."
+- Acknowledgments: "Ok...", "Alright...", "Right..."
+- Transitions: "So...", "Well..."
+- Use commas and ellipses (...) to create natural pauses
+- Mix and match: "Hmm, ok...", "Right, so...", "Alright..."
+
+BRIDGE must be:
+- ONLY pure thinking sounds: "Hmm...", "Uh...", "Mm...", "Ah..."
+- NO action words: never "let me", "I'll", "check", etc.
+- NO acknowledgment words: avoid "ok", "right", "alright"
+- Just raw thinking/stalling sounds like a human would make
+
+The phrases must be COMPLETELY NON-COMMITTAL - they should work before ANY response type:
+- Questions, statements, refusals, clarifications
+- Positive or negative news
+- Simple or complex answers
+
+AVOID phrases that set up expectations or imply actions:
+PRIMARY:
+- ❌ "Let me check..." (implies investigation)
+- ❌ "I'll help..." (implies assistance)
+- ❌ "Let's look..." (implies looking)
+- ✅ "Hmm, ok..." (pure thinking)
+- ✅ "Right, so..." (pure transition)
+- ✅ "Ah..." (pure acknowledgment)
+
+BRIDGE (even more minimal):
+- ❌ "Let me see..." (still implies action)
+- ❌ "One moment..." (too wordy)
+- ❌ "Ok..." (could conflict with response)
+- ✅ "Hmm..." (pure stalling)
+- ✅ "Uh..." (raw thinking)
+- ✅ "Mm..." (minimal sound)
+
+IMPORTANT: Generate NEW, DIFFERENT phrases that haven't been used in this conversation yet. Avoid repetition to maintain natural conversation flow.
+
+{{CONVERSATION_HISTORY}}
+
+Current user message: {{USER_UTTERANCE}}
+
+Output format:
+PRIMARY: [your phrase]
+BRIDGE: [your phrase]
+
+Output only the two lines above, nothing else.

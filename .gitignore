@@ -5,10 +5,18 @@ node_modules/
 # Test results
 tools/latency-tester/results/*.csv
 !tools/latency-tester/results/.gitkeep
+tools/cai-filler-test-rig/results/*.csv
+!tools/cai-filler-test-rig/results/.gitkeep
+tools/semantic-stability-tester/results/*.csv
+tools/semantic-stability-tester/results/*.html
+!tools/semantic-stability-tester/results/REPORT.md
 
 # Environment variables
 .env
 .env.local
+
+# Claude Code
+.claude/settings.local.json
 
 # Editor directories
 .vscode/
