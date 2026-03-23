@@ -53,32 +53,38 @@ sequenceDiagram
 
 **Key constraint**: false positives (wrong response sent) are unacceptable. False negatives (missed opportunity, normal latency) are fine. The stability checker is the safety net - it always runs before any response reaches the user.
 
-## Two-Phase Architecture
+## Three-Phase Architecture
 
-The pipeline has two independent mechanisms that run in different services:
+The pipeline has three phases that run across two services:
 
 ```mermaid
 graph LR
-    subgraph "cai-websocket (Phase 2)"
+    subgraph "cai-websocket (Phase 3)"
         SC[Stability Checker]
     end
 
-    subgraph "transcribed (Phase 1)"
-        FP[Handoff-Point Detector]
+    subgraph "transcribed (Phases 1 + 2)"
         TC[Turn Classifier]
+        FP[Handoff-Point Detector]
+        MN[Post-Handoff Monitor]
     end
 
     SC -->|"assistant turn + CaiHint"| TC
     TC -->|"turn type"| FP
     FP -->|"speculative partial"| SC
+    FP -->|"handoff triggered"| MN
+    MN -->|"ABORT (if shift)"| SC
 ```
 
-| Phase | Service | Question | Speed Budget |
-|-------|---------|----------|--------------|
-| **1. Handoff-Point Detector** | transcribed | "Should I send this partial to cai-ws now?" | < 1ms |
-| **2. Stability Checker** | cai-websocket | "Does this partial mean the same as the final?" | < 1ms |
+| Phase | Service | Question | When | Speed Budget |
+|-------|---------|----------|------|--------------|
+| **1. Handoff-Point Detection** | transcribed | "Should I send this partial to cai-ws now?" | Every interim transcript | < 1ms |
+| **2. Post-Handoff Monitoring** | transcribed | "Has the meaning shifted since I handed off?" | Every interim after handoff | < 1ms |
+| **3. Stability Check** | cai-websocket | "Does the handoff partial mean the same as the final?" | End-of-turn | < 1ms |
 
-Both must be **pure heuristic** - no model inference, no network calls. They run on every interim transcript (handoff-point) and at every end-of-turn (stability), so sub-millisecond is mandatory.
+All three must be **pure heuristic** - no model inference, no network calls. Sub-millisecond is mandatory.
+
+The key insight is that transcribed doesn't stop after the handoff. It continues receiving interims and monitors them for meaning shifts. If the user says "Yes" (handoff) then "actually no wait" (shift), the post-handoff monitor catches this mid-utterance and sends an ABORT - cancelling the speculative generation before end-of-turn. This gives cai-websocket a head start on reprocessing.
 
 ### Entry Points
 
@@ -86,7 +92,7 @@ Both must be **pure heuristic** - no model inference, no network calls. They run
 |-------|----------|----------|-----------|
 | **1. Handoff-Point** | `detectFirePoint()` | `src/fire-point/detector.ts:139` | `(partialUtterance, assistantPriorTurn, caiHint?) → FirePointDecision` |
 | **1. Turn Classifier** | `classifyAssistantTurn()` | `src/fire-point/turn-classifier.ts:142` | `(turn) → AssistantTurnType` |
-| **2. Stability** | `TokenDeltaHeuristicStrategy.compare()` | `src/strategies/token-delta-heuristic.ts:73` | `(interim, final, context?) → StabilityResult` |
+| **3. Stability** | `TokenDeltaHeuristicStrategy.compare()` | `src/strategies/token-delta-heuristic.ts:73` | `(interim, final, context?) → StabilityResult` |
 
 ### Messaging Between Services
 
@@ -288,7 +294,59 @@ Three checks run before the turn-type logic:
 | `DANGLING_WORDS` | Prepositions/determiners/conjunctions that expect a complement | Used by handoff-point detector only |
 | `AFFIRMATIVES` / `NEGATIVES` | Strong yes/no signals per language | Used by handoff-point detector only |
 
-## Phase 2: Stability Checker
+## Phase 2: Post-Handoff Monitoring
+
+**Location**: `fire-point-report.ts` (detectPostFireShift function)
+**Runs in**: transcribed service
+**Input**: handoff partial, current partial (each new interim after handoff)
+**Output**: shift/no-shift decision
+
+After the handoff-point detector fires (Phase 1), transcribed continues receiving interim transcripts from Deepgram. Rather than ignoring these, it monitors them for **meaning shifts** - cases where the user's intent changes after the point we handed off.
+
+### Why Monitor?
+
+Consider: "Yes" → handoff → "actually no, can you change it to Saturday?"
+
+Without monitoring, we wait until end-of-turn (2+ seconds later), then the stability checker catches it and reprocesses. With monitoring, we detect "actually no" within ~1 word of it being spoken and immediately send an ABORT. cai-websocket can discard the speculative generation and start reprocessing before end-of-turn arrives.
+
+### Shift Detection
+
+The monitor is deliberately **less sensitive** than the full stability checker. It only flags genuine meaning shifts, not incremental content:
+
+| Signal | Example | Action |
+|--------|---------|--------|
+| **Reversal phrases** | "actually no", "wait no", "never mind" | ABORT immediately |
+| **Qualification markers + content** | "but can you change...", "except the date" | ABORT - new constraint added |
+| **Addition markers + 2+ content words** | "and also book me a table" | ABORT - new topic |
+| **Negation after affirmative** | "Yes" → "not that one" | ABORT - reversal |
+
+Things that do **not** trigger ABORT:
+- Filler elaboration: "Yes" → "Yes please go ahead" (just reinforcement)
+- Closing words: "Thanks goodbye" after an acknowledgement
+- Harmless idioms: "Sure why not" (the "not" isn't negation)
+- Tail-position politeness: "No I left it at home sorry" ("sorry" isn't a shift)
+
+### Four Possible Outcomes
+
+```mermaid
+flowchart LR
+    H[Handoff] --> M{Monitor}
+    M -->|no shift| EOT{End-of-turn}
+    M -->|shift detected| A[ABORT]
+    EOT -->|SAME| S[Safe - latency win]
+    EOT -->|DIFFERENT| C[Caught - discard]
+    A --> EOT2[End-of-turn]
+    EOT2 --> R[Reprocess]
+```
+
+| Outcome | What Happened | User Impact |
+|---------|--------------|-------------|
+| **Safe** | Handed off, monitoring clean, stability SAME | Latency win - pre-generated response sent |
+| **Aborted** | Handed off, monitoring caught shift mid-utterance | Earlier catch than waiting for end-of-turn |
+| **Caught** | Handed off, monitoring clean, but stability caught change at end-of-turn | Normal latency - safety net worked |
+| **No handoff** | Detector never triggered | Normal latency - conservative, no risk |
+
+## Phase 3: Stability Checker
 
 **Location**: `src/strategies/token-delta-heuristic.ts`
 **Runs in**: cai-websocket service
@@ -463,11 +521,11 @@ tools/semantic-stability-tester/
 │   ├── fire-point/
 │   │   ├── detector.ts             # Phase 1: handoff-point decision logic
 │   │   ├── turn-classifier.ts      # Classifies assistant turn type
-│   │   ├── simulator.ts            # Connects Phase 1 + Phase 2 for testing
+│   │   ├── simulator.ts            # Connects all phases for testing
 │   │   ├── scenarios.ts            # 30 test scenarios (EN + DE)
 │   │   └── types.ts                # HandoffPointDecision, HandoffPointScenario, etc.
 │   ├── strategies/
-│   │   ├── token-delta-heuristic.ts  # Phase 2: stability checker (winner)
+│   │   ├── token-delta-heuristic.ts  # Phase 3: stability checker (winner)
 │   │   ├── embedding-similarity.ts   # Evaluated — too coarse, 8 FP
 │   │   ├── nli-entailment.ts         # Evaluated — unreliable, 12 FP
 │   │   ├── entity-diff.ts            # Evaluated — 24 FP

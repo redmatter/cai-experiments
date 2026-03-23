@@ -27,7 +27,8 @@ const stabilityChecker = new TokenDeltaHeuristicStrategy();
 
 // Speech timing estimates
 const MS_PER_WORD = 462;
-const VAD_SILENCE_MS = 600;
+const VAD_SILENCE_MS = 2000;
+const LLM_GENERATION_MS = 2500;
 
 type Outcome = 'safe' | 'caught' | 'aborted' | 'no-fire';
 
@@ -36,6 +37,7 @@ interface CorpusPairResult {
   turnType: string;
   // Fire point
   fired: boolean;
+  earlyHandoff: boolean;  // fire point before end of utterance (remaining speech > 0)
   fireWordIndex?: number;
   firedPartial?: string;
   totalWords: number;
@@ -51,9 +53,12 @@ interface CorpusPairResult {
   // Outcome
   outcome: Outcome;
   // Timing estimates
-  estTimeSavedMs?: number;
+  estHeadStartMs?: number;
+  estLatencyWithoutMs?: number;
+  estLatencyWithMs?: number;
+  estLatencySavedMs?: number;
+  estLatencySavedPct?: number;
   estAbortHeadStartMs?: number;
-  latencySavedPct?: number;
   // Ground truth comparison
   expectedVerdict: Verdict;
   pipelineCorrect: boolean;  // did the pipeline make the right call?
@@ -215,11 +220,18 @@ async function analysePair(pair: UtterancePair): Promise<CorpusPairResult> {
       ? 'safe'
       : 'caught';
 
-  // Timing
+  // Timing — same latency model as scenario report
   const estUtteranceDurationMs = words.length * MS_PER_WORD;
-  const estFirePointMs = fireWordIndex ? fireWordIndex * MS_PER_WORD : undefined;
   const estRemainingSpeechMs = fireWordIndex ? (words.length - fireWordIndex) * MS_PER_WORD : undefined;
-  const estTimeSavedMs = estRemainingSpeechMs !== undefined ? estRemainingSpeechMs + VAD_SILENCE_MS : undefined;
+  const estLatencyWithoutMs = VAD_SILENCE_MS + LLM_GENERATION_MS;
+  const estHeadStartMs = estRemainingSpeechMs !== undefined ? estRemainingSpeechMs + VAD_SILENCE_MS : undefined;
+  const estLatencyWithMs = estHeadStartMs !== undefined
+    ? VAD_SILENCE_MS + Math.max(0, LLM_GENERATION_MS - estHeadStartMs)
+    : undefined;
+  const estLatencySavedMs = estLatencyWithMs !== undefined ? estLatencyWithoutMs - estLatencyWithMs : undefined;
+  const estLatencySavedPct = estLatencySavedMs !== undefined
+    ? Math.round((estLatencySavedMs / estLatencyWithoutMs) * 100)
+    : undefined;
   const estAbortPointMs = abortWordIndex ? abortWordIndex * MS_PER_WORD : undefined;
   const estAbortHeadStartMs = (estAbortPointMs !== undefined)
     ? (estUtteranceDurationMs + VAD_SILENCE_MS) - estAbortPointMs
@@ -237,6 +249,7 @@ async function analysePair(pair: UtterancePair): Promise<CorpusPairResult> {
     pair,
     turnType,
     fired: true,
+    earlyHandoff: fireWordIndex < words.length,
     fireWordIndex,
     firedPartial,
     totalWords: words.length,
@@ -247,11 +260,12 @@ async function analysePair(pair: UtterancePair): Promise<CorpusPairResult> {
     stabilityReason,
     contextRichnessLevel,
     outcome,
-    estTimeSavedMs,
+    estHeadStartMs,
+    estLatencyWithoutMs,
+    estLatencyWithMs,
+    estLatencySavedMs,
+    estLatencySavedPct,
     estAbortHeadStartMs,
-    latencySavedPct: fireWordIndex
-      ? Math.round((1 - fireWordIndex / words.length) * 100)
-      : undefined,
     expectedVerdict: pair.expectedVerdict,
     pipelineCorrect,
     pipelineFP,
@@ -268,6 +282,7 @@ function esc(text: string): string {
 function generateHtml(results: CorpusPairResult[]): string {
   const total = results.length;
   const fired = results.filter((r) => r.fired);
+  const earlyHandoffs = results.filter((r) => r.earlyHandoff);
   const safe = results.filter((r) => r.outcome === 'safe');
   const caught = results.filter((r) => r.outcome === 'caught');
   const aborted = results.filter((r) => r.outcome === 'aborted');
@@ -276,10 +291,17 @@ function generateHtml(results: CorpusPairResult[]): string {
   const fns = results.filter((r) => r.pipelineFN);
   const correct = results.filter((r) => r.pipelineCorrect);
 
-  const avgTimeSafe = safe.length > 0
-    ? safe.reduce((s, r) => s + (r.estTimeSavedMs ?? 0), 0) / safe.length
+  const baselineLatency = VAD_SILENCE_MS + LLM_GENERATION_MS;
+  const avgLatencySavedSafe = safe.length > 0
+    ? safe.reduce((s, r) => s + (r.estLatencySavedMs ?? 0), 0) / safe.length
     : 0;
-  const totalTimeSafe = safe.reduce((s, r) => s + (r.estTimeSavedMs ?? 0), 0);
+  const avgLatencyWithSafe = safe.length > 0
+    ? safe.reduce((s, r) => s + (r.estLatencyWithMs ?? 0), 0) / safe.length
+    : 0;
+  const avgLatencySavedPctSafe = safe.length > 0
+    ? Math.round(safe.reduce((s, r) => s + (r.estLatencySavedPct ?? 0), 0) / safe.length)
+    : 0;
+  const totalLatencySaved = safe.reduce((s, r) => s + (r.estLatencySavedMs ?? 0), 0);
   const avgAbortHead = aborted.length > 0
     ? aborted.reduce((s, r) => s + (r.estAbortHeadStartMs ?? 0), 0) / aborted.length
     : 0;
@@ -288,16 +310,17 @@ function generateHtml(results: CorpusPairResult[]): string {
   const categories = [...new Set(results.map((r) => r.pair.category))].sort();
   const catStats = categories.map((cat) => {
     const catResults = results.filter((r) => r.pair.category === cat);
-    const catFired = catResults.filter((r) => r.fired);
+    const catEarlyHandoffs = catResults.filter((r) => r.earlyHandoff);
     const catSafe = catResults.filter((r) => r.outcome === 'safe');
     const catAborted = catResults.filter((r) => r.outcome === 'aborted');
     const catCaught = catResults.filter((r) => r.outcome === 'caught');
     const catFP = catResults.filter((r) => r.pipelineFP);
     const catFN = catResults.filter((r) => r.pipelineFN);
-    const expectedVerdict = catResults[0]?.expectedVerdict ?? '?';
+    const catSameCount = catResults.filter((r) => r.expectedVerdict === 'SAME').length;
+    const catDiffCount = catResults.filter((r) => r.expectedVerdict === 'DIFFERENT').length;
     return {
-      cat, total: catResults.length, expectedVerdict,
-      fired: catFired.length, safe: catSafe.length,
+      cat, total: catResults.length, catSameCount, catDiffCount,
+      earlyHandoffs: catEarlyHandoffs.length, safe: catSafe.length,
       aborted: catAborted.length, caught: catCaught.length,
       fp: catFP.length, fn: catFN.length,
     };
@@ -313,7 +336,7 @@ function generateHtml(results: CorpusPairResult[]): string {
     return {
       tt, total: ttResults.length,
       safe: ttSafe.length, aborted: ttAborted.length, caught: ttCaught.length,
-      fireRate: Math.round(ttResults.filter((r) => r.fired).length / ttResults.length * 100),
+      earlyHandoffs: ttResults.filter((r) => r.earlyHandoff).length,
     };
   });
 
@@ -392,6 +415,7 @@ function generateHtml(results: CorpusPairResult[]): string {
   .pair-card .pair-text { margin-bottom: 0.15rem; }
   .pair-card .pair-label { display: inline-block; width: 60px; font-weight: 600; color: #9ca3af; font-size: 0.72rem; text-transform: uppercase; }
 
+  .section-desc { font-size: 0.82rem; color: #6b7280; margin: -0.25rem 0 0.75rem; line-height: 1.5; }
   .pipeline-diagram { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 1rem; margin: 1rem 0; font-family: monospace; font-size: 0.8rem; line-height: 1.8; }
   .pipeline-diagram .arrow { color: #9ca3af; }
   .pipeline-diagram .phase { font-weight: 700; }
@@ -413,9 +437,10 @@ function generateHtml(results: CorpusPairResult[]): string {
 </div>
 
 <h2>Pipeline Summary</h2>
+<p class="section-desc">Overall results of running the speculative handoff pipeline across all corpus pairs. An "early handoff" means the interim transcript was a prefix of the final - the speaker kept talking after the handoff point, giving the LLM a head start. Safe = latency win, Aborted = cancelled mid-utterance, Caught = discarded at end-of-turn.</p>
 <div class="summary">
   <div class="stat-card"><div class="label">Corpus Pairs</div><div class="value">${total}</div></div>
-  <div class="stat-card"><div class="label">Fire Rate</div><div class="value">${Math.round(fired.length / total * 100)}%</div><div class="sub">${fired.length}/${total} pairs</div></div>
+  <div class="stat-card"><div class="label">Early Handoffs</div><div class="value">${Math.round(earlyHandoffs.length / total * 100)}%</div><div class="sub">${earlyHandoffs.length}/${total} pairs with remaining speech</div></div>
   <div class="stat-card"><div class="label">Safe (latency win)</div><div class="value val-safe">${safe.length}</div><div class="sub">${(safe.length / total * 100).toFixed(1)}%</div></div>
   <div class="stat-card"><div class="label">Aborted (mid-utterance)</div><div class="value val-aborted">${aborted.length}</div><div class="sub">${(aborted.length / total * 100).toFixed(1)}%</div></div>
   <div class="stat-card"><div class="label">Caught (end-of-turn)</div><div class="value val-caught">${caught.length}</div><div class="sub">${(caught.length / total * 100).toFixed(1)}%</div></div>
@@ -426,23 +451,29 @@ function generateHtml(results: CorpusPairResult[]): string {
 </div>
 
 <div class="summary">
-  <div class="stat-card"><div class="label">Avg Time Saved (safe)</div><div class="value val-safe">${(avgTimeSafe / 1000).toFixed(1)}s</div></div>
-  <div class="stat-card"><div class="label">Total Time Saved</div><div class="value val-safe">${(totalTimeSafe / 1000).toFixed(0)}s</div><div class="sub">across ${safe.length} safe fires</div></div>
+  <div class="stat-card"><div class="label">Baseline Latency</div><div class="value val-caught">${(baselineLatency / 1000).toFixed(1)}s</div><div class="sub">VAD ${(VAD_SILENCE_MS/1000).toFixed(1)}s + LLM ${(LLM_GENERATION_MS/1000).toFixed(1)}s</div></div>
+  <div class="stat-card"><div class="label">Avg Latency (safe)</div><div class="value val-safe">${(avgLatencyWithSafe / 1000).toFixed(1)}s</div><div class="sub">down from ${(baselineLatency / 1000).toFixed(1)}s</div></div>
+  <div class="stat-card"><div class="label">Avg Latency Saved</div><div class="value val-safe">${(avgLatencySavedSafe / 1000).toFixed(1)}s</div><div class="sub">${avgLatencySavedPctSafe}% reduction</div></div>
+  <div class="stat-card"><div class="label">Total Latency Saved</div><div class="value val-safe">${(totalLatencySaved / 1000).toFixed(0)}s</div><div class="sub">across ${safe.length} safe handoffs</div></div>
   <div class="stat-card"><div class="label">Avg Abort Head Start</div><div class="value val-aborted">${(avgAbortHead / 1000).toFixed(1)}s</div><div class="sub">earlier than end-of-turn</div></div>
-  <div class="stat-card"><div class="label">Speech Rate</div><div class="value">${MS_PER_WORD}ms/w</div><div class="sub">~130 WPM + ${VAD_SILENCE_MS}ms VAD</div></div>
+</div>
+
+<div class="summary">
+  <div class="stat-card" style="grid-column: span 3;"><div class="label">Assumptions</div><div class="sub" style="margin-top:0.3rem">Speech: ${MS_PER_WORD}ms/word (~130 WPM) | VAD endpointing: ${(VAD_SILENCE_MS/1000).toFixed(1)}s (no turn-detect for short responses) | LLM generation: ${(LLM_GENERATION_MS/1000).toFixed(1)}s | Latency = time from user finishes speaking to response ready</div></div>
 </div>
 
 <h2>By Category</h2>
+<p class="section-desc">Breakdown by semantic change category. Expected shows the ground-truth label distribution (SAME = meaning unchanged, DIFF = meaning changed). Early Handoff shows how many pairs had remaining speech after the handoff point. FP must always be 0 - a false positive means the wrong response would be sent to the caller.</p>
 <table>
   <thead>
-    <tr><th>Category</th><th>Expected</th><th class="num">Pairs</th><th class="num">Fired</th><th class="num">Safe</th><th class="num">Aborted</th><th class="num">Caught</th><th class="num">FP</th><th class="num">FN</th></tr>
+    <tr><th>Category</th><th>Expected</th><th class="num">Pairs</th><th class="num">Early Handoff</th><th class="num">Safe</th><th class="num">Aborted</th><th class="num">Caught</th><th class="num">FP</th><th class="num">FN</th></tr>
   </thead>
   <tbody>
 ${catStats.map((c) => `    <tr>
       <td>${esc(c.cat)}</td>
-      <td><span class="badge ${c.expectedVerdict === 'SAME' ? 'badge-same' : 'badge-diff'}">${c.expectedVerdict}</span></td>
+      <td>${c.catSameCount > 0 ? `<span class="badge badge-same">${c.catSameCount} SAME</span> ` : ''}${c.catDiffCount > 0 ? `<span class="badge badge-diff">${c.catDiffCount} DIFF</span>` : ''}</td>
       <td class="num">${c.total}</td>
-      <td class="num">${c.fired}</td>
+      <td class="num">${c.earlyHandoffs}</td>
       <td class="num" style="color:var(--safe);font-weight:${c.safe > 0 ? '600' : '400'}">${c.safe}</td>
       <td class="num" style="color:var(--aborted);font-weight:${c.aborted > 0 ? '600' : '400'}">${c.aborted}</td>
       <td class="num" style="color:var(--caught)">${c.caught}</td>
@@ -453,15 +484,16 @@ ${catStats.map((c) => `    <tr>
 </table>
 
 <h2>By Assistant Turn Type</h2>
+<p class="section-desc">How outcomes vary by the type of assistant turn that preceded the user's response. The turn type affects what kind of user response is expected (e.g. a yes-no-question expects a short answer, an information turn expects elaboration) and how aggressively the pipeline can speculate.</p>
 <table>
   <thead>
-    <tr><th>Turn Type</th><th class="num">Pairs</th><th class="num">Fire Rate</th><th class="num">Safe</th><th class="num">Aborted</th><th class="num">Caught</th></tr>
+    <tr><th>Turn Type</th><th class="num">Pairs</th><th class="num">Early Handoff</th><th class="num">Safe</th><th class="num">Aborted</th><th class="num">Caught</th></tr>
   </thead>
   <tbody>
 ${turnStats.map((t) => `    <tr>
       <td>${esc(t.tt)}</td>
       <td class="num">${t.total}</td>
-      <td class="num">${t.fireRate}%</td>
+      <td class="num">${t.earlyHandoffs}/${t.total}</td>
       <td class="num" style="color:var(--safe);font-weight:${t.safe > 0 ? '600' : '400'}">${t.safe}</td>
       <td class="num" style="color:var(--aborted)">${t.aborted}</td>
       <td class="num" style="color:var(--caught)">${t.caught}</td>
@@ -470,6 +502,7 @@ ${turnStats.map((t) => `    <tr>
 </table>
 
 <h2>By Language</h2>
+<p class="section-desc">Pipeline performance by language. The heuristic word lists (fillers, negation markers, qualifiers) are language-specific, so accuracy may vary across languages.</p>
 <table>
   <thead>
     <tr><th>Language</th><th class="num">Pairs</th><th class="num">Safe</th><th class="num">Aborted</th><th class="num">Caught</th><th class="num">FP</th><th class="num">FN</th></tr>
@@ -556,7 +589,7 @@ ${safeCorrect.map((r) => `  <div class="pair-card" style="border-left-color:var(
     <div class="pair-meta">
       ${esc(r.pair.id)} &middot; ${esc(r.pair.category)} &middot; ${esc(r.turnType)}
       &middot; fire word ${r.fireWordIndex}/${r.totalWords}
-      &middot; ~${((r.estTimeSavedMs ?? 0) / 1000).toFixed(1)}s saved
+      &middot; ${((r.estLatencyWithMs ?? 0) / 1000).toFixed(1)}s vs ${((r.estLatencyWithoutMs ?? 0) / 1000).toFixed(1)}s (-${((r.estLatencySavedMs ?? 0) / 1000).toFixed(1)}s)
     </div>
     <div class="pair-text"><span class="pair-label">Fired</span> "${esc(r.firedPartial ?? '')}"</div>
     <div class="pair-text"><span class="pair-label">Final</span> "${esc(r.pair.final)}"</div>
@@ -626,7 +659,10 @@ async function main(): Promise<void> {
   const fps = results.filter((r) => r.pipelineFP).length;
   const fns = results.filter((r) => r.pipelineFN).length;
 
+  const earlyHandoffCount = results.filter((r) => r.earlyHandoff).length;
+
   console.log(`\nResults:`);
+  console.log(`  Early handoffs: ${earlyHandoffCount}/${results.length} (${(earlyHandoffCount / results.length * 100).toFixed(1)}%)`);
   console.log(`  Safe:    ${safe} (${(safe / results.length * 100).toFixed(1)}%)`);
   console.log(`  Aborted: ${aborted} (${(aborted / results.length * 100).toFixed(1)}%)`);
   console.log(`  Caught:  ${caught} (${(caught / results.length * 100).toFixed(1)}%)`);

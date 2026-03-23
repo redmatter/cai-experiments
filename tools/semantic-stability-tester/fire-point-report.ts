@@ -29,9 +29,12 @@ type Phase = 'waiting' | 'fired' | 'monitoring' | 'abort' | 'after-abort';
 
 // Speech timing estimates
 // Conversational speech: ~130 WPM = ~462ms per word
-// VAD end-of-turn silence detection: ~600ms (Deepgram endpointing)
+// End-of-turn: for short responses where turn-detect can't help, VAD silence
+// detection is the only signal. Typically 1-2s depending on config.
+// LLM generation: typical time-to-first-token + full generation ~2.5s
 const MS_PER_WORD = 462;
-const VAD_SILENCE_MS = 600;
+const VAD_SILENCE_MS = 2000;
+const LLM_GENERATION_MS = 2500;
 
 interface WordStep {
   wordIndex: number;
@@ -73,7 +76,11 @@ interface ScenarioReport {
   estUtteranceDurationMs?: number;    // total speech time
   estFirePointMs?: number;            // time into utterance when we fired
   estRemainingSpeechMs?: number;      // speech time after fire point
-  estTimeSavedMs?: number;            // remaining speech + VAD silence
+  estHeadStartMs?: number;            // LLM generation head start (remaining speech + VAD)
+  estLatencyWithoutMs?: number;       // baseline: VAD + LLM generation
+  estLatencyWithMs?: number;          // speculative: VAD + max(0, LLM - head start)
+  estLatencySavedMs?: number;         // difference: without - with
+  estLatencySavedPct?: number;        // percentage reduction
   estAbortPointMs?: number;            // time into utterance when abort detected
   estAbortHeadStartMs?: number;        // how much earlier we caught it vs end-of-turn
 }
@@ -315,7 +322,23 @@ async function analyseScenario(scenario: FirePointScenario): Promise<ScenarioRep
   const estUtteranceDurationMs = words.length * MS_PER_WORD;
   const estFirePointMs = fireWordIndex ? fireWordIndex * MS_PER_WORD : undefined;
   const estRemainingSpeechMs = fireWordIndex ? (words.length - fireWordIndex) * MS_PER_WORD : undefined;
-  const estTimeSavedMs = estRemainingSpeechMs !== undefined ? estRemainingSpeechMs + VAD_SILENCE_MS : undefined;
+
+  // Latency model:
+  // Without speculation: user finishes → VAD wait → LLM generation → response
+  //   Total from end-of-speech = VAD + LLM
+  // With speculation (safe): LLM started at handoff point, runs during remaining speech + VAD
+  //   Head start = remaining speech time + VAD wait
+  //   Remaining LLM after end-of-turn = max(0, LLM - head start)
+  //   Total from end-of-speech = VAD + max(0, LLM - head start)
+  const estLatencyWithoutMs = VAD_SILENCE_MS + LLM_GENERATION_MS;
+  const estHeadStartMs = estRemainingSpeechMs !== undefined ? estRemainingSpeechMs + VAD_SILENCE_MS : undefined;
+  const estLatencyWithMs = estHeadStartMs !== undefined
+    ? VAD_SILENCE_MS + Math.max(0, LLM_GENERATION_MS - estHeadStartMs)
+    : undefined;
+  const estLatencySavedMs = estLatencyWithMs !== undefined ? estLatencyWithoutMs - estLatencyWithMs : undefined;
+  const estLatencySavedPct = estLatencySavedMs !== undefined
+    ? Math.round((estLatencySavedMs / estLatencyWithoutMs) * 100)
+    : undefined;
 
   // For aborted: how much earlier did we catch it vs waiting for end-of-turn?
   const estAbortPointMs = abortWordIndex ? abortWordIndex * MS_PER_WORD : undefined;
@@ -346,7 +369,11 @@ async function analyseScenario(scenario: FirePointScenario): Promise<ScenarioRep
     estUtteranceDurationMs,
     estFirePointMs,
     estRemainingSpeechMs,
-    estTimeSavedMs,
+    estHeadStartMs,
+    estLatencyWithoutMs,
+    estLatencyWithMs,
+    estLatencySavedMs,
+    estLatencySavedPct,
     estAbortPointMs,
     estAbortHeadStartMs,
   };
@@ -365,12 +392,18 @@ function generateHtml(reports: ScenarioReport[]): string {
   const avgSaved = fired.length > 0
     ? Math.round(fired.reduce((s, r) => s + (r.latencySavedPct ?? 0), 0) / fired.length)
     : 0;
-  const avgTimeSavedSafe = safe.length > 0
-    ? Math.round(safe.reduce((s, r) => s + (r.estTimeSavedMs ?? 0), 0) / safe.length)
+  const avgLatencySavedSafe = safe.length > 0
+    ? Math.round(safe.reduce((s, r) => s + (r.estLatencySavedMs ?? 0), 0) / safe.length)
     : 0;
-  const totalTimeSavedSafe = safe.reduce((s, r) => s + (r.estTimeSavedMs ?? 0), 0);
-  const maxTimeSaved = Math.max(...safe.map((r) => r.estTimeSavedMs ?? 0));
-  const minTimeSaved = safe.length > 0 ? Math.min(...safe.map((r) => r.estTimeSavedMs ?? 0)) : 0;
+  const avgLatencySavedPctSafe = safe.length > 0
+    ? Math.round(safe.reduce((s, r) => s + (r.estLatencySavedPct ?? 0), 0) / safe.length)
+    : 0;
+  const maxLatencySaved = safe.length > 0 ? Math.max(...safe.map((r) => r.estLatencySavedMs ?? 0)) : 0;
+  const minLatencySaved = safe.length > 0 ? Math.min(...safe.map((r) => r.estLatencySavedMs ?? 0)) : 0;
+  const baselineLatency = VAD_SILENCE_MS + LLM_GENERATION_MS;
+  const avgLatencyWith = safe.length > 0
+    ? Math.round(safe.reduce((s, r) => s + (r.estLatencyWithMs ?? 0), 0) / safe.length)
+    : 0;
 
   let html = `<!DOCTYPE html>
 <html lang="en">
@@ -512,16 +545,15 @@ function generateHtml(reports: ScenarioReport[]): string {
   <div class="stat-card"><div class="label">Caught (end-of-turn)</div><div class="value val-caught" id="caught-count">${caught.length}</div></div>
   <div class="stat-card"><div class="label">Aborted (mid-utterance)</div><div class="value" id="aborted-count" style="color:#7c3aed">${aborted.length}</div></div>
   <div class="stat-card"><div class="label">No Fire</div><div class="value val-nofire">${noFire.length}</div></div>
-  <div class="stat-card"><div class="label">Avg Saved</div><div class="value" id="avg-saved">${avgSaved}%</div></div>
   <div class="stat-card"><div class="label">Wrong Responses</div><div class="value val-safe">0</div></div>
 </div>
 
 <div class="summary" style="margin-top: -1.5rem;">
-  <div class="stat-card"><div class="label">Avg Time Saved (safe fires)</div><div class="value val-safe" id="avg-time-saved">${(avgTimeSavedSafe / 1000).toFixed(1)}s</div></div>
-  <div class="stat-card"><div class="label">Max Time Saved</div><div class="value val-safe" id="max-time-saved">${(maxTimeSaved / 1000).toFixed(1)}s</div></div>
-  <div class="stat-card"><div class="label">Min Time Saved</div><div class="value" id="min-time-saved">${(minTimeSaved / 1000).toFixed(1)}s</div></div>
-  <div class="stat-card"><div class="label">Speech Rate (est.)</div><div class="value">${MS_PER_WORD}ms/w</div></div>
-  <div class="stat-card"><div class="label">VAD Silence</div><div class="value">${VAD_SILENCE_MS}ms</div></div>
+  <div class="stat-card"><div class="label">Baseline Latency</div><div class="value val-caught">${(baselineLatency / 1000).toFixed(1)}s</div><div style="font-size:0.72rem;color:#6b7280">VAD ${(VAD_SILENCE_MS/1000).toFixed(1)}s + LLM ${(LLM_GENERATION_MS/1000).toFixed(1)}s</div></div>
+  <div class="stat-card"><div class="label">Avg Latency (safe handoffs)</div><div class="value val-safe" id="avg-latency-with">${(avgLatencyWith / 1000).toFixed(1)}s</div><div style="font-size:0.72rem;color:#6b7280">down from ${(baselineLatency / 1000).toFixed(1)}s</div></div>
+  <div class="stat-card"><div class="label">Avg Latency Saved</div><div class="value val-safe" id="avg-latency-saved">${(avgLatencySavedSafe / 1000).toFixed(1)}s</div><div style="font-size:0.72rem;color:#6b7280" id="avg-latency-saved-pct">${avgLatencySavedPctSafe}% reduction</div></div>
+  <div class="stat-card"><div class="label">Max Latency Saved</div><div class="value val-safe" id="max-latency-saved">${(maxLatencySaved / 1000).toFixed(1)}s</div></div>
+  <div class="stat-card"><div class="label">Min Latency Saved</div><div class="value" id="min-latency-saved">${(minLatencySaved / 1000).toFixed(1)}s</div></div>
   <div class="stat-card">
     <div class="label">Richness Threshold</div>
     <select id="richness-threshold" style="font-size:1rem;font-weight:700;border:2px solid #e5e7eb;border-radius:6px;padding:0.25rem 0.5rem;margin-top:0.15rem;cursor:pointer;background:white;">
@@ -531,6 +563,10 @@ function generateHtml(reports: ScenarioReport[]): string {
       <option value="high" selected>High (default)</option>
     </select>
   </div>
+</div>
+
+<div class="summary" style="margin-top: -1.5rem;">
+  <div class="stat-card" style="grid-column: span 2;"><div class="label">Assumptions</div><div style="font-size:0.82rem;color:#374151;margin-top:0.3rem">Speech: ${MS_PER_WORD}ms/word (~130 WPM) | VAD endpointing: ${(VAD_SILENCE_MS/1000).toFixed(1)}s (no turn-detect for short responses) | LLM generation: ${(LLM_GENERATION_MS/1000).toFixed(1)}s | Latency = time from user finishes speaking to response ready</div></div>
 </div>
 `;
 
@@ -545,18 +581,18 @@ function generateHtml(reports: ScenarioReport[]): string {
     const badgeText = report.fireOutcome === 'safe' ? 'SAFE'
       : report.fireOutcome === 'caught' ? 'CAUGHT'
       : report.fireOutcome === 'aborted' ? 'ABORTED' : 'NO FIRE';
-    const timeSavedStr = report.estTimeSavedMs
-      ? ` &middot; ~${(report.estTimeSavedMs / 1000).toFixed(1)}s saved`
+    const latencyStr = report.estLatencySavedMs !== undefined && report.fireOutcome === 'safe'
+      ? ` &middot; ${(report.estLatencyWithMs! / 1000).toFixed(1)}s vs ${(report.estLatencyWithoutMs! / 1000).toFixed(1)}s (-${(report.estLatencySavedMs / 1000).toFixed(1)}s)`
       : '';
     const abortStr = report.abortWordIndex
       ? ` &middot; abort at word ${report.abortWordIndex}`
       : '';
     const fireInfo = report.firedPartial
-      ? `word ${report.fireWordIndex}/${report.totalWords} &middot; ${report.latencySavedPct}% saved${timeSavedStr}${abortStr}`
+      ? `word ${report.fireWordIndex}/${report.totalWords}${latencyStr}${abortStr}`
       : 'did not fire';
 
     html += `
-<div class="scenario ${oc}" data-outcome="${report.fireOutcome}" data-richness="${report.contextRichnessLevel ?? 'none'}" data-time-saved="${report.estTimeSavedMs ?? 0}" data-latency-pct="${report.latencySavedPct ?? 0}">
+<div class="scenario ${oc}" data-outcome="${report.fireOutcome}" data-richness="${report.contextRichnessLevel ?? 'none'}" data-latency-saved="${report.estLatencySavedMs ?? 0}" data-latency-with="${report.estLatencyWithMs ?? 0}" data-latency-without="${report.estLatencyWithoutMs ?? 0}" data-latency-saved-pct="${report.estLatencySavedPct ?? 0}">
   <div class="scenario-header" onclick="this.parentElement.classList.toggle('open')">
     <span>
       <span class="scenario-id">${esc(s.id)}</span>
@@ -724,14 +760,16 @@ const thresholdSelect = document.getElementById('richness-threshold');
 
 function applyThreshold() {
   const threshold = thresholdSelect.value;
-  let safeCount = 0, caughtCount = 0, abortedCount = 0, totalFiredPct = 0, firedCount = 0;
-  const safeTimes = [];
+  let safeCount = 0, caughtCount = 0, abortedCount = 0, firedCount = 0;
+  const safeLatencySaved = [];
+  const safeLatencyWith = [];
 
   scenarios.forEach(el => {
     const baseOutcome = el.dataset.outcome;
     const richness = el.dataset.richness || 'none';
-    const timeSaved = parseFloat(el.dataset.timeSaved) || 0;
-    const latencyPct = parseInt(el.dataset.latencyPct) || 0;
+    const latencySaved = parseFloat(el.dataset.latencySaved) || 0;
+    const latencyWith = parseFloat(el.dataset.latencyWith) || 0;
+    const latencySavedPct = parseInt(el.dataset.latencySavedPct) || 0;
 
     // Demote: safe + richness >= threshold (but 'none' threshold = never demote)
     const isDemoted = baseOutcome === 'safe'
@@ -740,43 +778,43 @@ function applyThreshold() {
       && RICHNESS_ORDER[richness] >= RICHNESS_ORDER[threshold];
 
     el.classList.toggle('demoted', isDemoted);
-    // Restore or override border class
     if (isDemoted) {
       el.classList.remove('outcome-safe');
     } else if (baseOutcome === 'safe') {
       el.classList.add('outcome-safe');
     }
 
-    // Count effective outcomes
     const effectiveOutcome = isDemoted ? 'caught' : baseOutcome;
     if (effectiveOutcome === 'safe') {
       safeCount++;
-      safeTimes.push(timeSaved);
+      safeLatencySaved.push(latencySaved);
+      safeLatencyWith.push(latencyWith);
     }
     if (effectiveOutcome === 'caught') caughtCount++;
     if (effectiveOutcome === 'aborted') abortedCount++;
-    if (baseOutcome !== 'no-fire') {
-      firedCount++;
-      totalFiredPct += (effectiveOutcome === 'safe' || effectiveOutcome === 'caught') ? latencyPct : 0;
-    }
+    if (baseOutcome !== 'no-fire') firedCount++;
   });
 
-  // Update summary cards
   document.getElementById('safe-count').textContent = safeCount;
   document.getElementById('caught-count').textContent = caughtCount;
   document.getElementById('aborted-count').textContent = abortedCount;
-  document.getElementById('avg-saved').textContent = firedCount > 0
-    ? Math.round(totalFiredPct / firedCount) + '%' : '0%';
 
-  if (safeTimes.length > 0) {
-    const avg = safeTimes.reduce((a, b) => a + b, 0) / safeTimes.length;
-    document.getElementById('avg-time-saved').textContent = (avg / 1000).toFixed(1) + 's';
-    document.getElementById('max-time-saved').textContent = (Math.max(...safeTimes) / 1000).toFixed(1) + 's';
-    document.getElementById('min-time-saved').textContent = (Math.min(...safeTimes) / 1000).toFixed(1) + 's';
+  if (safeLatencySaved.length > 0) {
+    const avgSaved = safeLatencySaved.reduce((a, b) => a + b, 0) / safeLatencySaved.length;
+    const avgWith = safeLatencyWith.reduce((a, b) => a + b, 0) / safeLatencyWith.length;
+    const baselineMs = ${VAD_SILENCE_MS + LLM_GENERATION_MS};
+    const avgPct = Math.round((avgSaved / baselineMs) * 100);
+    document.getElementById('avg-latency-with').textContent = (avgWith / 1000).toFixed(1) + 's';
+    document.getElementById('avg-latency-saved').textContent = (avgSaved / 1000).toFixed(1) + 's';
+    document.getElementById('avg-latency-saved-pct').textContent = avgPct + '% reduction';
+    document.getElementById('max-latency-saved').textContent = (Math.max(...safeLatencySaved) / 1000).toFixed(1) + 's';
+    document.getElementById('min-latency-saved').textContent = (Math.min(...safeLatencySaved) / 1000).toFixed(1) + 's';
   } else {
-    document.getElementById('avg-time-saved').textContent = '0.0s';
-    document.getElementById('max-time-saved').textContent = '0.0s';
-    document.getElementById('min-time-saved').textContent = '0.0s';
+    document.getElementById('avg-latency-with').textContent = '-';
+    document.getElementById('avg-latency-saved').textContent = '-';
+    document.getElementById('avg-latency-saved-pct').textContent = '';
+    document.getElementById('max-latency-saved').textContent = '-';
+    document.getElementById('min-latency-saved').textContent = '-';
   }
 }
 
