@@ -13,6 +13,7 @@
     "fire-point-test": "bun run tools/semantic-stability-tester/fire-point-test.ts",
     "fire-point-test:verbose": "bun run tools/semantic-stability-tester/fire-point-test.ts -v",
     "fire-point-report": "bun run tools/semantic-stability-tester/fire-point-report.ts",
+    "latency-report": "bun run tools/latency-tester/generate-report.ts",
     "test": "bun test"
   },
   "dependencies": {

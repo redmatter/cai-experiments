@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { join } from 'path';
+import { appendFile } from 'fs/promises';
 import { BedrockClient } from '../../lib/bedrock-client';
 import { AnthropicClient } from '../../lib/anthropic-client';
 import { loadScenarios } from '../../lib/scenario-loader';
@@ -47,13 +48,15 @@ async function main() {
 
   console.log(`\n✅ Initialized ${clientMap.size} client(s)\n`);
 
-  // Create output file
-  const outputFile = join(RESULTS_DIR, 'latency.csv');
-  console.log(`📝 Results will be written to: ${outputFile}\n`);
+  // Create output files
+  const outputFile = join(RESULTS_DIR, process.env.OUTPUT_FILE || 'latency.csv');
+  const responsesFile = outputFile.replace('.csv', '-responses.jsonl');
+  console.log(`📝 Results will be written to: ${outputFile}`);
+  console.log(`📝 Responses will be written to: ${responsesFile}\n`);
 
   // Run tests
   const iterations = parseInt(process.env.ITERATIONS || '10');
-  const delayMs = parseInt(process.env.DELAY_MS || '30000');
+  const delayMs = parseInt(process.env.DELAY_MS || '15000');
 
   console.log(`🔄 Running ${iterations} iteration(s) with ${delayMs}ms delay between runs\n`);
   console.log('=' .repeat(80));
@@ -108,6 +111,16 @@ async function main() {
 
         // Write to CSV
         await writeJsonToCsv(metrics, outputFile);
+
+        // Write response to JSONL
+        const responseText = response.output?.message?.content?.[0]?.text ?? '';
+        const responseEntry = JSON.stringify({
+          timestamp: metrics.timestamp,
+          testName: scenario.name,
+          iteration: i,
+          response: responseText,
+        });
+        await appendFile(responsesFile, responseEntry + '\n');
       } catch (error) {
         console.error(`   ❌ Error: ${error instanceof Error ? error.message : String(error)}`);
       }
