@@ -1,25 +1,14 @@
 [
   {
     "provider": "bedrock",
-    "model": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
-    "region": "us-east-2",
-    "optimisedLatency": false,
-    "withCache": false,
-    "temperature": 0.2,
-    "maxTokens": 1024,
-    "name": "Bedrock: Claude 3.5 Haiku (US, No Cache)",
-    "promptTemplate": "prompt-template-1.json"
-  },
-  {
-    "provider": "bedrock",
     "model": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
     "region": "us-east-2",
     "optimisedLatency": false,
     "withCache": false,
     "temperature": 0.2,
     "maxTokens": 1024,
-    "name": "Bedrock: Claude 4.5 Haiku (US, No Cache)",
-    "promptTemplate": "prompt-template-1.json"
+    "name": "MobileDE Triage: Haiku 4.5 (US, No Cache)",
+    "promptTemplate": "prompt-template-mobilede-triage.json"
   },
   {
     "provider": "bedrock",
@@ -29,8 +18,8 @@
     "withCache": true,
     "temperature": 0.2,
     "maxTokens": 1024,
-    "name": "Bedrock: Claude 4.5 Haiku (US, With Cache)",
-    "promptTemplate": "prompt-template-1.json"
+    "name": "MobileDE Triage: Haiku 4.5 (US, With Cache)",
+    "promptTemplate": "prompt-template-mobilede-triage.json"
   },
   {
     "provider": "bedrock",
@@ -40,8 +29,8 @@
     "withCache": false,
     "temperature": 0.2,
     "maxTokens": 1024,
-    "name": "Bedrock: Claude 4.5 Haiku (EU, No Cache)",
-    "promptTemplate": "prompt-template-1.json"
+    "name": "MobileDE Triage: Haiku 4.5 (EU, No Cache)",
+    "promptTemplate": "prompt-template-mobilede-triage.json"
   },
   {
     "provider": "bedrock",
@@ -51,37 +40,30 @@
     "withCache": true,
     "temperature": 0.2,
     "maxTokens": 1024,
-    "name": "Bedrock: Claude 4.5 Haiku (EU, With Cache)",
-    "promptTemplate": "prompt-template-1.json"
-  },
-  {
-    "provider": "anthropic",
-    "model": "claude-haiku-4-5-20251001",
-    "withCache": false,
-    "temperature": 0.2,
-    "maxTokens": 1024,
-    "name": "Anthropic Direct: Claude 4.5 Haiku (No Cache)",
-    "promptTemplate": "prompt-template-1.json"
-  },
-  {
-    "provider": "anthropic",
-    "model": "claude-haiku-4-5-20251001",
-    "withCache": true,
-    "temperature": 0.2,
-    "maxTokens": 1024,
-    "name": "Anthropic Direct: Claude 4.5 Haiku (With Cache)",
-    "promptTemplate": "prompt-template-1.json"
+    "name": "MobileDE Triage: Haiku 4.5 (EU, With Cache)",
+    "promptTemplate": "prompt-template-mobilede-triage.json"
   },
   {
     "provider": "bedrock",
-    "model": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
-    "region": "us-east-2",
+    "model": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "region": "eu-north-1",
     "optimisedLatency": false,
     "withCache": false,
     "temperature": 0.2,
     "maxTokens": 1024,
-    "name": "Bedrock: Claude 3.5 Haiku (US, No Cache, Small Prompt)",
-    "promptTemplate": "prompt-template-small.json"
+    "name": "MobileDE Triage: Haiku 4.5 (EU-North, No Cache)",
+    "promptTemplate": "prompt-template-mobilede-triage.json"
+  },
+  {
+    "provider": "bedrock",
+    "model": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "region": "eu-north-1",
+    "optimisedLatency": false,
+    "withCache": true,
+    "temperature": 0.2,
+    "maxTokens": 1024,
+    "name": "MobileDE Triage: Haiku 4.5 (EU-North, With Cache)",
+    "promptTemplate": "prompt-template-mobilede-triage.json"
   },
   {
     "provider": "bedrock",
@@ -91,8 +73,8 @@
     "withCache": false,
     "temperature": 0.2,
     "maxTokens": 1024,
-    "name": "Bedrock: Claude 4.5 Haiku (US, No Cache, Small Prompt)",
-    "promptTemplate": "prompt-template-small.json"
+    "name": "MobileDE Conv: Haiku 4.5 (US, No Cache)",
+    "promptTemplate": "prompt-template-mobilede-conv.json"
   },
   {
     "provider": "bedrock",
@@ -102,8 +84,8 @@
     "withCache": true,
     "temperature": 0.2,
     "maxTokens": 1024,
-    "name": "Bedrock: Claude 4.5 Haiku (US, With Cache, Small Prompt)",
-    "promptTemplate": "prompt-template-small.json"
+    "name": "MobileDE Conv: Haiku 4.5 (US, With Cache)",
+    "promptTemplate": "prompt-template-mobilede-conv.json"
   },
   {
     "provider": "bedrock",
@@ -113,8 +95,8 @@
     "withCache": false,
     "temperature": 0.2,
     "maxTokens": 1024,
-    "name": "Bedrock: Claude 4.5 Haiku (EU, No Cache, Small Prompt)",
-    "promptTemplate": "prompt-template-small.json"
+    "name": "MobileDE Conv: Haiku 4.5 (EU, No Cache)",
+    "promptTemplate": "prompt-template-mobilede-conv.json"
   },
   {
     "provider": "bedrock",
@@ -124,25 +106,29 @@
     "withCache": true,
     "temperature": 0.2,
     "maxTokens": 1024,
-    "name": "Bedrock: Claude 4.5 Haiku (EU, With Cache, Small Prompt)",
-    "promptTemplate": "prompt-template-small.json"
+    "name": "MobileDE Conv: Haiku 4.5 (EU, With Cache)",
+    "promptTemplate": "prompt-template-mobilede-conv.json"
   },
   {
-    "provider": "anthropic",
-    "model": "claude-haiku-4-5-20251001",
+    "provider": "bedrock",
+    "model": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "region": "eu-north-1",
+    "optimisedLatency": false,
     "withCache": false,
     "temperature": 0.2,
     "maxTokens": 1024,
-    "name": "Anthropic Direct: Claude 4.5 Haiku (No Cache, Small Prompt)",
-    "promptTemplate": "prompt-template-small.json"
+    "name": "MobileDE Conv: Haiku 4.5 (EU-North, No Cache)",
+    "promptTemplate": "prompt-template-mobilede-conv.json"
   },
   {
-    "provider": "anthropic",
-    "model": "claude-haiku-4-5-20251001",
+    "provider": "bedrock",
+    "model": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "region": "eu-north-1",
+    "optimisedLatency": false,
     "withCache": true,
     "temperature": 0.2,
     "maxTokens": 1024,
-    "name": "Anthropic Direct: Claude 4.5 Haiku (With Cache, Small Prompt)",
-    "promptTemplate": "prompt-template-small.json"
+    "name": "MobileDE Conv: Haiku 4.5 (EU-North, With Cache)",
+    "promptTemplate": "prompt-template-mobilede-conv.json"
   }
 ]
